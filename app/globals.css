@@ -10,39 +10,55 @@ body {
   color: var(--foreground);
 }
 
-/* ── Leaflet map trail labels ──────────────────────────────────── */
-.trail-label {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #374151;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-}
+/* ── Mapbox GL popup overrides ──────────────────────────────────────── */
+.mapboxgl-popup-tip { display: none; }
 
-.trail-tooltip {
-  background: white;
+.mapboxgl-popup-content {
+  border-radius: 10px !important;
+  padding: 0 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14) !important;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-.trail-tooltip::before {
-  display: none;
+  overflow: hidden;
 }
 
-/* Leaflet popup styling */
-.leaflet-popup-content-wrapper {
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-.leaflet-popup-content {
+.trail-popup {
+  padding: 10px 13px;
   font-size: 13px;
   line-height: 1.5;
-  margin: 10px 14px;
+  min-width: 160px;
+}
+.trail-popup strong {
+  display: block;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1px;
+}
+.trail-popup-sub {
+  color: #6b7280;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.trail-popup-stats {
+  color: #374151;
+  font-size: 12px;
+}
+
+.workout-popup {
+  padding: 10px 13px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.workout-popup strong {
+  display: block;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+/* ── Mapbox scale control ────────────────────────────────────────────── */
+.mapboxgl-ctrl-scale {
+  background: rgba(255,255,255,0.85) !important;
+  border-color: #9ca3af !important;
+  font-size: 10px !important;
+  color: #374151 !important;
 }
