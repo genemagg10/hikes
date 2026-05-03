@@ -56,7 +56,7 @@ export default function ImportPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hiketrack-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `trailtracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -101,14 +101,18 @@ export default function ImportPage() {
       </div>
 
       {/* iOS Shortcut tip */}
-      <div className="bg-green-50 border border-green-100 rounded-xl p-5">
-        <h2 className="font-semibold text-green-800 mb-2">Automate with iOS Shortcuts</h2>
+      <a
+        href="/setup"
+        className="block bg-green-50 border border-green-100 rounded-xl p-5 hover:bg-green-100 transition-colors"
+      >
+        <h2 className="font-semibold text-green-800 mb-2">
+          Better: sync directly from iPhone →
+        </h2>
         <p className="text-sm text-green-700">
-          You can create an iOS Shortcut that automatically reads new workouts from HealthKit and
-          exports them as a JSON backup. Trigger it after each workout or on a schedule.
-          Import the resulting JSON file here using the <strong>JSON backup</strong> option below.
+          Skip the export.zip entirely. An iOS Shortcut can push new workouts straight
+          from HealthKit to your site in seconds — fully automatic if you want it.
         </p>
-      </div>
+      </a>
 
       {/* Upload section */}
       {step === 'idle' && (
@@ -150,7 +154,7 @@ export default function ImportPage() {
             <div className="text-3xl mb-2">📄</div>
             <p className="font-medium text-gray-700">Import JSON backup</p>
             <p className="text-sm text-gray-400 mt-0.5">
-              Previously exported from HikeTrack
+              Previously exported from TrailTracker
             </p>
             <input
               ref={jsonRef}

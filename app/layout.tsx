@@ -3,7 +3,7 @@ import './globals.css';
 import NavBar from '@/components/NavBar';
 
 export const metadata: Metadata = {
-  title: 'HikeTrack — Lafayette Trail Tracker',
+  title: 'TrailTracker — Lafayette & East Bay',
   description: 'Track your hikes, walks, and runs in the Lafayette / East Bay area.',
 };
 

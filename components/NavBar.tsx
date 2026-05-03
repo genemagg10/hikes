@@ -7,6 +7,7 @@ const links = [
   { href: '/trails', label: 'Trails' },
   { href: '/map', label: 'Map' },
   { href: '/import', label: 'Import' },
+  { href: '/setup', label: 'Sync' },
 ];
 
 export default function NavBar() {
@@ -15,7 +16,7 @@ export default function NavBar() {
       <div className="max-w-6xl mx-auto px-4 flex items-center h-14 gap-6">
         <Link href="/" className="flex items-center gap-2 font-bold text-green-700 text-lg mr-4">
           <Mountain className="w-5 h-5" />
-          HikeTrack
+          TrailTracker
         </Link>
         {links.map((l) => (
           <Link

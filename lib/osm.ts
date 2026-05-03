@@ -160,7 +160,7 @@ export async function fetchLamorindaTrails(): Promise<OsmTrailFeature[]> {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
-      'User-Agent': 'HikeTrack/1.0 (+https://github.com/genemagg10/hikes)',
+      'User-Agent': 'TrailTracker/1.0 (+https://github.com/genemagg10/hikes)',
     },
     body: `data=${encodeURIComponent(OVERPASS_QUERY)}`,
     cache: 'no-store',
