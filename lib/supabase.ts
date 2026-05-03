@@ -45,4 +45,22 @@ export interface DbTrail {
   geometry?: GeoJSON.MultiLineString;
   osm_id?: number;
   osm_type?: string;
+  // progress fields (when fetched via trails_with_progress view)
+  completion_pct?: number;
+  is_complete?: boolean;
+  covered_m?: number;
+  workout_count?: number;
+  first_visit?: string;
+  last_visit?: string;
+}
+
+export interface DbTrailStats {
+  total_trails: number;
+  completed: number;
+  in_progress: number;
+  untouched: number;
+  total_trail_m: number;
+  covered_m: number;
+  workouts_with_gps: number;
+  last_visit: string | null;
 }
