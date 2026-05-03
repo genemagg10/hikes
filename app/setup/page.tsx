@@ -51,36 +51,42 @@ export default function SetupPage() {
       <Section step={3} title="Build the Shortcut on iPhone">
         <p>
           Open the <strong>Shortcuts</strong> app → tap <strong>+</strong> →{' '}
-          <strong>New Shortcut</strong>. Add these actions in order:
+          <strong>New Shortcut</strong>. In the action search bar, type{' '}
+          <em>health</em> to find these:
         </p>
         <ol className="list-decimal list-inside text-sm space-y-2">
           <li>
-            <strong>Find Workouts</strong> — set <em>Limit</em> to <code>20</code>,
-            sort by <em>End Date, Latest First</em>. Optionally filter by date so you
-            only sync new ones.
+            <strong>Find Health Samples</strong> — this is the action you want.
+            (Apple lists workouts as &ldquo;health samples,&rdquo; not &ldquo;workouts.&rdquo;)
+            Configure it:
+            <ul className="list-disc list-inside ml-5 mt-1 space-y-0.5 text-gray-500">
+              <li><em>Sample Type</em>: <strong>Workouts</strong></li>
+              <li><em>Limit</em>: <code>20</code> for daily syncs, or{' '}
+                <code>1000</code> for a one-time backfill of all your history</li>
+              <li><em>Sort By</em>: <strong>End Date</strong>, Latest First</li>
+            </ul>
           </li>
           <li>
-            <strong>Repeat with Each</strong> on <em>Workouts</em>. Inside the loop:
+            <strong>Repeat with Each</strong> on <em>Health Samples</em>. Inside the loop:
           </li>
           <li className="ml-5 list-none">
             <ol className="list-[lower-alpha] list-inside space-y-2">
               <li>
-                <strong>Get Details of Workout</strong> (Shortcut Input is{' '}
-                <em>Repeat Item</em>) — pull <em>Type</em>, <em>Start Date</em>,{' '}
-                <em>End Date</em>, <em>Duration</em>, <em>Distance</em>,{' '}
-                <em>Active Energy</em>, <em>Total Elevation Climb</em>.
+                <strong>Get Details of Health Sample</strong> (Shortcut Input is{' '}
+                <em>Repeat Item</em>) — pull <em>Workout Activity Type</em>,{' '}
+                <em>Start Date</em>, <em>End Date</em>, <em>Duration</em>,{' '}
+                <em>Total Distance</em>, <em>Total Energy Burned</em>.
               </li>
               <li>
                 <strong>Dictionary</strong> action — build a JSON object with these
-                keys (use the magic variables from the previous step):
+                keys (drag the magic variables from the previous step into the values):
                 <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-2 text-xs overflow-x-auto">
-{`type:        Type
+{`type:        Workout Activity Type
 startDate:   Start Date
 endDate:     End Date
 duration:    Duration
-distance:    Distance
-calories:    Active Energy
-elevation:   Total Elevation Climb`}
+distance:    Total Distance
+calories:    Total Energy Burned`}
                 </pre>
               </li>
               <li>
@@ -104,7 +110,8 @@ elevation:   Total Elevation Climb`}
         </ol>
         <p className="text-xs text-gray-500">
           Tap the <strong>Play</strong> button to test. Each workout that returns{' '}
-          <code>{`{"ok":true,"saved":1}`}</code> is a success.
+          <code>{`{"ok":true,"saved":1}`}</code> is a success. The first time you
+          run it, iOS will ask for permission to read Health data — grant it.
         </p>
       </Section>
 
@@ -126,27 +133,37 @@ elevation:   Total Elevation Climb`}
       </Section>
 
       {/* Step 5: GPS routes (optional, harder) */}
-      <Section step={5} title="Add GPS routes (optional)">
+      <Section step={5} title="Add GPS routes (optional but recommended)">
         <p>
-          To match workouts to seeded trails on the map, the Shortcut also needs to
-          send the GPS track. Inside the per-workout loop, after the Dictionary is
-          built:
+          GPS tracks are what light up trails on the map. Without them, workouts
+          show up in your stats but no trails get checked off. Inside the
+          per-workout loop, before the POST:
         </p>
         <ol className="list-decimal list-inside text-sm space-y-1">
-          <li>Add <strong>Get Workout Route</strong> (input: Repeat Item)</li>
           <li>
-            <strong>Repeat with Each</strong> on the route locations → for each, build
-            a sub-dictionary <code className="text-xs">{`{lat, lon, ele, time}`}</code>{' '}
-            and add it to a list
+            Add <strong>Get Workout Route from Health Sample</strong>{' '}
+            (input: <em>Repeat Item</em>)
           </li>
           <li>
-            Set the <code className="text-xs">route</code> key on the outer
-            Dictionary to that list before the POST
+            <strong>Repeat with Each</strong> on the locations the route returns →
+            inside, build a <strong>Dictionary</strong> with{' '}
+            <code className="text-xs">lat</code> = <em>Latitude</em>,{' '}
+            <code className="text-xs">lon</code> = <em>Longitude</em>,{' '}
+            <code className="text-xs">ele</code> = <em>Altitude</em>,{' '}
+            <code className="text-xs">time</code> = <em>Date</em>. Then{' '}
+            <strong>Add to List</strong> (target: a variable like{' '}
+            <code>RoutePoints</code>).
+          </li>
+          <li>
+            Back in the outer dictionary, set{' '}
+            <code className="text-xs">route</code> = <code>RoutePoints</code>{' '}
+            before the POST.
           </li>
         </ol>
         <p className="text-xs text-gray-500">
-          Skip this if you don&apos;t need trail matching. Workouts without GPS still
-          show up on the dashboard with stats.
+          The endpoint accepts the route either as a list of{' '}
+          <code>{`{lat, lon, ele, time}`}</code> objects or as a string of{' '}
+          <code>lat,lon</code> lines, whichever is easier in Shortcuts.
         </p>
       </Section>
 
@@ -157,6 +174,17 @@ elevation:   Total Elevation Climb`}
         <code>400 Missing &quot;startDate&quot;</code> (Shortcut sent the wrong key),
         <code>500 IMPORT_TOKEN not configured</code> (env var not set or not yet
         redeployed).
+      </div>
+
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700">
+        <strong>Fallback for huge backfills:</strong> if the Shortcut isn&apos;t
+        working, you can trim your Apple Health <code>export.zip</code> down to
+        just the workout data (~5-10 MB) on your computer, then upload via{' '}
+        <a href="/import" className="text-green-700 underline">/import</a>:
+        <pre className="mt-2 bg-white border border-gray-200 rounded p-2 text-xs overflow-x-auto">
+{`npm run trim-export -- ~/Downloads/export.zip
+# writes export-workouts.zip alongside the original`}
+        </pre>
       </div>
     </div>
   );
