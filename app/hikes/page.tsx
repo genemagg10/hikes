@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { Workout, ActivityType } from '@/lib/types';
 import { loadWorkouts, deleteWorkout, updateWorkout, loadWorkoutsLocal } from '@/lib/store';
 import WorkoutCard from '@/components/WorkoutCard';
-import type { DbTrail, DbWorkout } from '@/lib/supabase';
+import type { DbWorkout } from '@/lib/supabase';
 
 const TrailMap = dynamic(() => import('@/components/TrailMap'), { ssr: false });
 
@@ -42,7 +42,6 @@ function HikesPageInner() {
   const initialType = (searchParams.get('type') as ActivityType) ?? 'all';
 
   const [workouts, setWorkouts]     = useState<Workout[]>([]);
-  const [trails, setTrails]         = useState<DbTrail[]>([]);
   const [typeFilter, setTypeFilter] = useState<ActivityType | 'all'>(initialType);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [editingId, setEditingId]   = useState<string | undefined>();
@@ -50,16 +49,11 @@ function HikesPageInner() {
   const [editNotes, setEditNotes]   = useState('');
 
   useEffect(() => {
-    // Load local cache immediately for snappy UI, then refresh from remote
     const local = loadWorkoutsLocal().sort((a, b) => (a.startDate > b.startDate ? -1 : 1));
     setWorkouts(local);
 
-    Promise.all([
-      loadWorkouts(),
-      fetch('/api/trails').then((r) => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([remote, tr]) => {
-      setWorkouts((remote as Workout[]).sort((a, b) => (a.startDate > b.startDate ? -1 : 1)));
-      setTrails(tr as DbTrail[]);
+    loadWorkouts().then((remote) => {
+      setWorkouts(remote.sort((a, b) => (a.startDate > b.startDate ? -1 : 1)));
     });
   }, []);
 
@@ -154,7 +148,6 @@ function HikesPageInner() {
         {/* Map + detail */}
         <div className="lg:col-span-3 space-y-4">
           <TrailMap
-            trails={trails}
             workouts={filtered.map(toDbWorkout)}
             selectedWorkoutId={selectedId}
             onWorkoutClick={(id) => setSelectedId(id === selectedId ? undefined : id)}

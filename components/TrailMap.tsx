@@ -1,40 +1,19 @@
 'use client';
 
 /**
- * TrailMap — Mapbox GL JS map with:
+ * TrailMap — Mapbox GL JS map showing the trail network colored by
+ * personal completion (green = done, amber gradient = in progress,
+ * gray = untouched). Trails are fetched from /api/trails/geojson.
  *
- *  ZOOM-LEVEL STRATEGY
- *  ───────────────────
- *  z < 10  : faint trail corridors (1px), no labels             ← city-wide
- *  z 10-12 : medium weight lines + trail name labels at midpoint ← neighborhood
- *  z 12-14 : full-weight lines + popup on hover + topo base      ← trail level
- *  z > 14  : individual GPS tracks + elevation tints             ← on-trail
- *
- *  LAYERS (bottom → top)
- *  ─────────────────────
- *  1. Mapbox Outdoors base style (has trails, topo, terrain)
- *  2. trails-fill       — wide transparent click target
- *  3. trails-line       — colored by difficulty, weight by zoom
- *  4. trails-labels     — trail name symbols, appear at z ≥ 12
- *  5. workouts-line     — your GPS tracks, colored by activity type
- *  6. workouts-selected — highlighted selected workout (thicker)
- *  7. workout-dots      — start-point markers at z ≥ 12
+ * Workouts can be overlaid via the `workouts` prop.
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import type { DbTrail, DbWorkout } from '@/lib/supabase';
+import type { DbWorkout } from '@/lib/supabase';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
-
-// ── Color constants ────────────────────────────────────────────────────────
-
-const DIFFICULTY_COLOR: Record<string, string> = {
-  easy:     '#22c55e',
-  moderate: '#f59e0b',
-  hard:     '#ef4444',
-};
 
 const ACTIVITY_COLOR: Record<string, string> = {
   hiking:  '#16a34a',
@@ -44,14 +23,14 @@ const ACTIVITY_COLOR: Record<string, string> = {
   other:   '#6b7280',
 };
 
-// Default center: Lafayette, CA
+const COMPLETE_COLOR   = '#10b981'; // emerald-500
+const PROGRESS_COLOR   = '#f59e0b'; // amber-500
+const UNTOUCHED_COLOR  = '#9ca3af'; // gray-400
+
 const DEFAULT_CENTER: [number, number] = [-122.1235, 37.893];
 const DEFAULT_ZOOM = 12;
 
-// ── Props ──────────────────────────────────────────────────────────────────
-
 interface TrailMapProps {
-  trails?: DbTrail[];
   workouts?: DbWorkout[];
   selectedWorkoutId?: string;
   highlightTrailId?: string;
@@ -59,31 +38,14 @@ interface TrailMapProps {
   onTrailClick?: (id: string) => void;
   height?: string;
   style?: 'outdoors' | 'satellite-streets' | 'streets';
+  /** Reserved for future modes; currently always "completion". */
+  colorMode?: 'completion';
 }
 
-// ── GeoJSON builders ───────────────────────────────────────────────────────
-
-function trailsToGeoJSON(trails: DbTrail[]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: trails
-      .filter((t) => t.geometry)
-      .map((t) => ({
-        type: 'Feature',
-        id: t.id,
-        geometry: t.geometry!,
-        properties: {
-          id:         t.id,
-          name:       t.name,
-          area:       t.area ?? '',
-          difficulty: t.difficulty ?? 'easy',
-          shape:      t.shape ?? 'out-and-back',
-          distance_m: t.distance_m ?? 0,
-          elevation_m: t.elevation_gain_m ?? 0,
-        },
-      })),
-  };
-}
+const EMPTY_FC: GeoJSON.FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 function workoutsToGeoJSON(workouts: DbWorkout[]): GeoJSON.FeatureCollection {
   return {
@@ -101,7 +63,6 @@ function workoutsToGeoJSON(workouts: DbWorkout[]): GeoJSON.FeatureCollection {
           distance_m: w.distance_m,
           duration_s: w.duration_seconds,
           start_date: w.start_date,
-          elevation_m: w.elevation_ascended_m ?? 0,
         },
       })),
   };
@@ -131,10 +92,7 @@ function workoutDotsGeoJSON(workouts: DbWorkout[]): GeoJSON.FeatureCollection {
   };
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
-
 export default function TrailMap({
-  trails = [],
   workouts = [],
   selectedWorkoutId,
   highlightTrailId,
@@ -146,10 +104,27 @@ export default function TrailMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
   const popupRef     = useRef<mapboxgl.Popup | null>(null);
+  const trailsFcRef  = useRef<GeoJSON.FeatureCollection>(EMPTY_FC);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [mapStyle, setMapStyle] = useState(style);
+  const [mapStyle, setMapStyle]   = useState(style);
+  const [trailsFc, setTrailsFc]   = useState<GeoJSON.FeatureCollection>(EMPTY_FC);
 
-  // ── Initialize map ──────────────────────────────────────────────────────
+  // Fetch trail geometry + progress once
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/trails/geojson')
+      .then((r) => r.ok ? r.json() : EMPTY_FC)
+      .catch(() => EMPTY_FC)
+      .then((fc: GeoJSON.FeatureCollection) => {
+        if (!cancelled) {
+          trailsFcRef.current = fc;
+          setTrailsFc(fc);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -187,7 +162,7 @@ export default function TrailMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Update map style ────────────────────────────────────────────────────
+  // Re-add sources/layers on style change
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
@@ -199,15 +174,14 @@ export default function TrailMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapStyle]);
 
-  // ── Update trail data ───────────────────────────────────────────────────
+  // Push trail data into the map source when it loads
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
-    const src = map.getSource('trails') as mapboxgl.GeoJSONSource | undefined;
-    src?.setData(trailsToGeoJSON(trails));
-  }, [trails, mapLoaded]);
+    (map.getSource('trails') as mapboxgl.GeoJSONSource | undefined)?.setData(trailsFc);
+  }, [trailsFc, mapLoaded]);
 
-  // ── Update workout data ─────────────────────────────────────────────────
+  // Push workout data
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
@@ -217,7 +191,7 @@ export default function TrailMap({
       ?.setData(workoutDotsGeoJSON(workouts));
   }, [workouts, mapLoaded]);
 
-  // ── Highlight selected workout ──────────────────────────────────────────
+  // Highlight selected workout
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
@@ -228,69 +202,53 @@ export default function TrailMap({
     );
   }, [selectedWorkoutId, mapLoaded]);
 
-  // ── Highlight selected trail ────────────────────────────────────────────
+  // Highlight selected trail (color/width override)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapLoaded) return;
+    if (!map || !mapLoaded || !map.getLayer('trails-line')) return;
+    const id = highlightTrailId ?? '';
     map.setPaintProperty('trails-line', 'line-color', [
       'case',
-      ['==', ['get', 'id'], highlightTrailId ?? ''],
-      '#f97316',
-      ['match', ['get', 'difficulty'],
-        'easy',     DIFFICULTY_COLOR.easy,
-        'moderate', DIFFICULTY_COLOR.moderate,
-        'hard',     DIFFICULTY_COLOR.hard,
-        '#6b7280'
-      ],
+      ['==', ['get', 'id'], id], '#f97316',
+      ['==', ['get', 'is_complete'], true], COMPLETE_COLOR,
+      ['>', ['get', 'completion_pct'], 0], PROGRESS_COLOR,
+      UNTOUCHED_COLOR,
     ]);
     map.setPaintProperty('trails-line', 'line-width', [
       'interpolate', ['linear'], ['zoom'],
-      10, ['case', ['==', ['get', 'id'], highlightTrailId ?? ''], 3, 1],
-      13, ['case', ['==', ['get', 'id'], highlightTrailId ?? ''], 6, 3],
-      16, ['case', ['==', ['get', 'id'], highlightTrailId ?? ''], 8, 4],
+      10, ['case', ['==', ['get', 'id'], id], 3, 1.2],
+      13, ['case', ['==', ['get', 'id'], id], 6, 2.8],
+      16, ['case', ['==', ['get', 'id'], id], 8, 4.5],
     ]);
-  }, [highlightTrailId, mapLoaded]);
-
-  // ── Source / Layer setup ────────────────────────────────────────────────
+  }, [highlightTrailId, mapLoaded, trailsFc]);
 
   const addSources = useCallback((map: mapboxgl.Map) => {
     if (!map.getSource('trails')) {
       map.addSource('trails', {
         type: 'geojson',
-        data: trailsToGeoJSON(trails),
+        data: trailsFcRef.current,
         generateId: false,
       });
     }
     if (!map.getSource('workouts')) {
-      map.addSource('workouts', {
-        type: 'geojson',
-        data: workoutsToGeoJSON(workouts),
-      });
+      map.addSource('workouts', { type: 'geojson', data: workoutsToGeoJSON(workouts) });
     }
     if (!map.getSource('workout-dots')) {
-      map.addSource('workout-dots', {
-        type: 'geojson',
-        data: workoutDotsGeoJSON(workouts),
-      });
+      map.addSource('workout-dots', { type: 'geojson', data: workoutDotsGeoJSON(workouts) });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addLayers = useCallback((map: mapboxgl.Map) => {
-    // ── Trail hit target (wide transparent line for easy clicking) ──────
     if (!map.getLayer('trails-fill')) {
       map.addLayer({
         id: 'trails-fill',
         type: 'line',
         source: 'trails',
-        paint: {
-          'line-width': 16,
-          'line-color': 'transparent',
-        },
+        paint: { 'line-width': 16, 'line-color': 'transparent' },
       });
     }
 
-    // ── Trail lines ──────────────────────────────────────────────────────
     if (!map.getLayer('trails-line')) {
       map.addLayer({
         id: 'trails-line',
@@ -299,37 +257,27 @@ export default function TrailMap({
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
           'line-color': [
-            'match', ['get', 'difficulty'],
-            'easy',     DIFFICULTY_COLOR.easy,
-            'moderate', DIFFICULTY_COLOR.moderate,
-            'hard',     DIFFICULTY_COLOR.hard,
-            '#6b7280',
+            'case',
+            ['==', ['get', 'is_complete'], true], COMPLETE_COLOR,
+            ['>', ['get', 'completion_pct'], 0], PROGRESS_COLOR,
+            UNTOUCHED_COLOR,
           ],
-          // Weight increases with zoom
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            9, 0.8,
-            12, 2.5,
-            14, 4,
-            17, 6,
+            9,  ['case', ['==', ['get', 'is_complete'], true], 1.5, ['>', ['get', 'completion_pct'], 0], 1.2, 0.7],
+            12, ['case', ['==', ['get', 'is_complete'], true], 3.2, ['>', ['get', 'completion_pct'], 0], 2.6, 1.6],
+            14, ['case', ['==', ['get', 'is_complete'], true], 4.5, ['>', ['get', 'completion_pct'], 0], 3.6, 2.2],
+            17, ['case', ['==', ['get', 'is_complete'], true], 7,   ['>', ['get', 'completion_pct'], 0], 5.5, 3.2],
           ],
           'line-opacity': [
             'interpolate', ['linear'], ['zoom'],
-            9, 0.5,
-            12, 0.85,
-            16, 1,
-          ],
-          // Out-and-back trails get a dash
-          'line-dasharray': [
-            'match', ['get', 'shape'],
-            'out-and-back', ['literal', [4, 2]],
-            ['literal', [1]],
+            9,  ['case', ['>', ['get', 'completion_pct'], 0], 0.85, 0.45],
+            14, ['case', ['>', ['get', 'completion_pct'], 0], 1.0,  0.7],
           ],
         },
       });
     }
 
-    // ── Trail name labels (appear at zoom ≥ 12) ─────────────────────────
     if (!map.getLayer('trails-labels')) {
       map.addLayer({
         id: 'trails-labels',
@@ -353,7 +301,6 @@ export default function TrailMap({
       });
     }
 
-    // ── Workout GPS tracks ───────────────────────────────────────────────
     if (!map.getLayer('workouts-line')) {
       map.addLayer({
         id: 'workouts-line',
@@ -370,36 +317,26 @@ export default function TrailMap({
             ACTIVITY_COLOR.other,
           ],
           'line-width': 2.5,
-          'line-opacity': 0.75,
+          'line-opacity': 0.7,
         },
       });
     }
 
-    // ── Selected workout (drawn on top, thicker) ─────────────────────────
     if (!map.getLayer('workouts-selected')) {
       map.addLayer({
         id: 'workouts-selected',
         type: 'line',
         source: 'workouts',
-        filter: ['==', 'true', 'false'],  // hidden by default
+        filter: ['==', 'true', 'false'],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': [
-            'match', ['get', 'type'],
-            'hiking',  ACTIVITY_COLOR.hiking,
-            'walking', ACTIVITY_COLOR.walking,
-            'running', ACTIVITY_COLOR.running,
-            'cycling', ACTIVITY_COLOR.cycling,
-            ACTIVITY_COLOR.other,
-          ],
+          'line-color': '#1d4ed8',
           'line-width': 5,
           'line-opacity': 1,
-          'line-gap-width': 0,
         },
       });
     }
 
-    // ── Start-point dots (appear at zoom ≥ 12) ───────────────────────────
     if (!map.getLayer('workout-dots')) {
       map.addLayer({
         id: 'workout-dots',
@@ -424,40 +361,39 @@ export default function TrailMap({
     }
   }, []);
 
-  // ── Interactions ────────────────────────────────────────────────────────
-
   const attachInteractions = useCallback((map: mapboxgl.Map) => {
-    // Cursor change on hover
     for (const layer of ['trails-fill', 'workout-dots', 'workouts-line']) {
-      map.on('mouseenter', layer, () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', layer, () => {
-        map.getCanvas().style.cursor = '';
-      });
+      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     }
 
-    // Trail popup on hover
     map.on('mousemove', 'trails-fill', (e) => {
       if (!e.features?.length) return;
       const props = e.features[0].properties ?? {};
       const mi = props.distance_m ? (props.distance_m / 1609.34).toFixed(1) : '?';
-      const elev = props.elevation_m ? `+${Math.round(props.elevation_m * 3.281)}ft` : '';
+      const pct = Math.round((props.completion_pct ?? 0) * 100);
+      const isDone = props.is_complete === true || props.is_complete === 'true';
+      const status = isDone
+        ? `<span style="color:${COMPLETE_COLOR};font-weight:600">✓ Complete</span>`
+        : pct > 0
+          ? `<span style="color:${PROGRESS_COLOR};font-weight:600">${pct}% complete</span>`
+          : `<span style="color:${UNTOUCHED_COLOR}">Not yet hiked</span>`;
+      const lastVisit = props.last_visit
+        ? `<div class="trail-popup-sub">Last visited ${new Date(props.last_visit).toLocaleDateString()}</div>`
+        : '';
       const html = `
         <div class="trail-popup">
           <strong>${props.name}</strong>
           <div class="trail-popup-sub">${props.area ?? ''}</div>
-          <div class="trail-popup-stats">
-            ${mi} mi &nbsp;·&nbsp; ${props.difficulty ?? ''}${elev ? ` &nbsp;·&nbsp; ${elev}` : ''}
-            ${props.shape === 'loop' ? '&nbsp;·&nbsp; 🔄 loop' : props.shape === 'out-and-back' ? '&nbsp;·&nbsp; ↔ out-and-back' : ''}
-          </div>
+          <div class="trail-popup-stats">${mi} mi &nbsp;·&nbsp; ${status}</div>
+          ${lastVisit}
         </div>`;
 
       if (!popupRef.current) {
         popupRef.current = new mapboxgl.Popup({
           closeButton: false,
           closeOnClick: false,
-          maxWidth: '220px',
+          maxWidth: '240px',
           className: 'trail-popup-wrapper',
           offset: 6,
         });
@@ -465,17 +401,13 @@ export default function TrailMap({
       popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
 
-    map.on('mouseleave', 'trails-fill', () => {
-      popupRef.current?.remove();
-    });
+    map.on('mouseleave', 'trails-fill', () => { popupRef.current?.remove(); });
 
-    // Trail click
     map.on('click', 'trails-fill', (e) => {
       const id = e.features?.[0]?.properties?.id;
       if (id) onTrailClick?.(id);
     });
 
-    // Workout dot popup + click
     map.on('click', 'workout-dots', (e) => {
       const props = e.features?.[0]?.properties ?? {};
       if (!props.id) return;
@@ -492,7 +424,6 @@ export default function TrailMap({
         .addTo(map);
     });
 
-    // Workout line click
     map.on('click', 'workouts-line', (e) => {
       const id = e.features?.[0]?.properties?.id;
       if (id) onWorkoutClick?.(id);
@@ -526,22 +457,29 @@ export default function TrailMap({
       </div>
 
       {/* Legend */}
-      <div className="absolute bottom-8 right-2 z-10 bg-white/92 rounded-xl shadow-lg p-3 text-xs space-y-1 max-w-[140px]">
-        <div className="font-semibold text-gray-600 mb-1.5">Trail difficulty</div>
-        {Object.entries(DIFFICULTY_COLOR).map(([d, c]) => (
-          <div key={d} className="flex items-center gap-1.5">
-            <span className="block w-5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
-            <span className="capitalize text-gray-500">{d}</span>
-          </div>
-        ))}
-        <div className="font-semibold text-gray-600 mt-2 mb-1">Activities</div>
-        {Object.entries(ACTIVITY_COLOR).filter(([k]) => k !== 'other').map(([t, c]) => (
-          <div key={t} className="flex items-center gap-1.5">
-            <span className="block w-5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
-            <span className="capitalize text-gray-500">{t}</span>
-          </div>
-        ))}
+      <div className="absolute bottom-8 right-2 z-10 bg-white/92 rounded-xl shadow-lg p-3 text-xs space-y-1 max-w-[160px]">
+        <div className="font-semibold text-gray-600 mb-1.5">Trail status</div>
+        <LegendRow color={COMPLETE_COLOR}  label="Complete (≥85%)" />
+        <LegendRow color={PROGRESS_COLOR}  label="In progress" />
+        <LegendRow color={UNTOUCHED_COLOR} label="Not yet hiked" />
+        {workouts.length > 0 && (
+          <>
+            <div className="font-semibold text-gray-600 mt-2 mb-1">My routes</div>
+            {(['hiking', 'walking', 'running', 'cycling'] as const).map((t) => (
+              <LegendRow key={t} color={ACTIVITY_COLOR[t]} label={t} />
+            ))}
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+function LegendRow({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="block w-5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
+      <span className="capitalize text-gray-500">{label}</span>
     </div>
   );
 }
