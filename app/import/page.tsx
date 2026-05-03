@@ -29,17 +29,17 @@ export default function ImportPage() {
     }
   }
 
-  function confirmImport() {
-    const res = addWorkouts(preview);
+  async function confirmImport() {
+    const res = await addWorkouts(preview);
     setResult(res);
     setStep('done');
   }
 
   function handleJsonImport(file: File) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const res = importJson(reader.result as string);
+        const res = await importJson(reader.result as string);
         setResult(res);
         setStep('done');
       } catch (e) {

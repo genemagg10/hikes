@@ -4,37 +4,68 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Workout, ActivityType } from '@/lib/types';
-import { loadWorkouts, deleteWorkout, updateWorkout } from '@/lib/store';
+import { loadWorkouts, deleteWorkout, updateWorkout, loadWorkoutsLocal } from '@/lib/store';
 import WorkoutCard from '@/components/WorkoutCard';
+import type { DbTrail, DbWorkout } from '@/lib/supabase';
 
-const HikeMap = dynamic(() => import('@/components/HikeMap'), { ssr: false });
+const TrailMap = dynamic(() => import('@/components/TrailMap'), { ssr: false });
 
 const TYPES: { value: ActivityType | 'all'; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'hiking', label: '🥾 Hikes' },
+  { value: 'all',     label: 'All' },
+  { value: 'hiking',  label: '🥾 Hikes' },
   { value: 'walking', label: '🚶 Walks' },
   { value: 'running', label: '🏃 Runs' },
   { value: 'cycling', label: '🚴 Rides' },
 ];
 
+function toDbWorkout(w: Workout): DbWorkout {
+  return {
+    id: w.id,
+    type: w.type,
+    start_date: w.startDate,
+    end_date: w.endDate,
+    duration_seconds: w.duration,
+    distance_m: w.distance,
+    calories: w.calories,
+    elevation_ascended_m: w.elevationAscended,
+    trail_name: w.trailName,
+    notes: w.notes,
+    has_gps: !!(w.route && w.route.length > 0),
+    route_geojson: w.route && w.route.length >= 2
+      ? { type: 'LineString', coordinates: w.route.map((p) => [p.lon, p.lat]) }
+      : null,
+  };
+}
+
 function HikesPageInner() {
   const searchParams = useSearchParams();
   const initialType = (searchParams.get('type') as ActivityType) ?? 'all';
 
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [workouts, setWorkouts]     = useState<Workout[]>([]);
+  const [trails, setTrails]         = useState<DbTrail[]>([]);
   const [typeFilter, setTypeFilter] = useState<ActivityType | 'all'>(initialType);
   const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [editingId, setEditingId] = useState<string | undefined>();
-  const [editName, setEditName] = useState('');
-  const [editNotes, setEditNotes] = useState('');
+  const [editingId, setEditingId]   = useState<string | undefined>();
+  const [editName, setEditName]     = useState('');
+  const [editNotes, setEditNotes]   = useState('');
 
   useEffect(() => {
-    reload();
+    // Load local cache immediately for snappy UI, then refresh from remote
+    const local = loadWorkoutsLocal().sort((a, b) => (a.startDate > b.startDate ? -1 : 1));
+    setWorkouts(local);
+
+    Promise.all([
+      loadWorkouts(),
+      fetch('/api/trails').then((r) => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([remote, tr]) => {
+      setWorkouts((remote as Workout[]).sort((a, b) => (a.startDate > b.startDate ? -1 : 1)));
+      setTrails(tr as DbTrail[]);
+    });
   }, []);
 
-  function reload() {
-    const data = loadWorkouts().sort((a, b) => (a.startDate > b.startDate ? -1 : 1));
-    setWorkouts(data);
+  async function reload() {
+    const data = await loadWorkouts();
+    setWorkouts(data.sort((a, b) => (a.startDate > b.startDate ? -1 : 1)));
   }
 
   const filtered =
@@ -48,9 +79,12 @@ function HikesPageInner() {
     setEditNotes(w.notes ?? '');
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editingId) return;
-    updateWorkout(editingId, { trailName: editName || undefined, notes: editNotes || undefined });
+    await updateWorkout(editingId, {
+      trailName: editName || undefined,
+      notes: editNotes || undefined,
+    });
     setEditingId(undefined);
     reload();
   }
@@ -87,12 +121,10 @@ function HikesPageInner() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* List */}
+        {/* Activity list */}
         <div className="lg:col-span-2 space-y-2 max-h-[70vh] overflow-y-auto pr-1">
           {filtered.length === 0 && (
-            <div className="text-center py-12 text-gray-400">
-              No activities found.
-            </div>
+            <div className="text-center py-12 text-gray-400">No activities found.</div>
           )}
           {filtered.map((w) => (
             <div key={w.id} className="relative group">
@@ -101,7 +133,6 @@ function HikesPageInner() {
                 selected={w.id === selectedId}
                 onClick={() => setSelectedId(w.id === selectedId ? undefined : w.id)}
               />
-              {/* Edit / delete actions */}
               <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={() => startEdit(w)}
@@ -122,12 +153,12 @@ function HikesPageInner() {
 
         {/* Map + detail */}
         <div className="lg:col-span-3 space-y-4">
-          <HikeMap
-            workouts={filtered}
+          <TrailMap
+            trails={trails}
+            workouts={filtered.map(toDbWorkout)}
             selectedWorkoutId={selectedId}
             onWorkoutClick={(id) => setSelectedId(id === selectedId ? undefined : id)}
             height="420px"
-            showAllTrails
           />
           {/* Selected detail */}
           {selected && (
@@ -145,14 +176,12 @@ function HikesPageInner() {
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                 {[
-                  ['Date', new Date(selected.startDate).toLocaleDateString()],
-                  ['Type', selected.type],
+                  ['Date',     new Date(selected.startDate).toLocaleDateString()],
+                  ['Type',     selected.type],
                   ['Distance', `${(selected.distance / 1609.34).toFixed(2)} mi`],
                   ['Duration', `${Math.round(selected.duration / 60)} min`],
-                  selected.calories ? ['Calories', `${selected.calories} kcal`] : null,
-                  selected.elevationAscended
-                    ? ['Elevation', `+${Math.round(selected.elevationAscended * 3.281)}ft`]
-                    : null,
+                  selected.calories          ? ['Calories',  `${selected.calories} kcal`] : null,
+                  selected.elevationAscended ? ['Elevation', `+${Math.round(selected.elevationAscended * 3.281)}ft`] : null,
                 ]
                   .filter((x): x is string[] => x !== null)
                   .map(([label, val]) => (
