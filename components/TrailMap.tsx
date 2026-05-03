@@ -47,6 +47,36 @@ const EMPTY_FC: GeoJSON.FeatureCollection = {
   features: [],
 };
 
+/** Tight bounding box of any GeoJSON geometry, [[w,s],[e,n]]. */
+function geometryBounds(
+  geom: GeoJSON.Geometry
+): [[number, number], [number, number]] | null {
+  let minLng = Infinity, minLat = Infinity;
+  let maxLng = -Infinity, maxLat = -Infinity;
+
+  const visit = (c: unknown): void => {
+    if (
+      Array.isArray(c) &&
+      c.length >= 2 &&
+      typeof c[0] === 'number' &&
+      typeof c[1] === 'number'
+    ) {
+      const lng = c[0] as number;
+      const lat = c[1] as number;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    } else if (Array.isArray(c)) {
+      c.forEach(visit);
+    }
+  };
+
+  if ('coordinates' in geom) visit(geom.coordinates);
+  if (!isFinite(minLng)) return null;
+  return [[minLng, minLat], [maxLng, maxLat]];
+}
+
 function workoutsToGeoJSON(workouts: DbWorkout[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -202,7 +232,7 @@ export default function TrailMap({
     );
   }, [selectedWorkoutId, mapLoaded]);
 
-  // Highlight selected trail (color/width override)
+  // Highlight selected trail (color/width override + fly to bounds)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || !map.getLayer('trails-line')) return;
@@ -220,6 +250,19 @@ export default function TrailMap({
       13, ['case', ['==', ['get', 'id'], id], 6, 2.8],
       16, ['case', ['==', ['get', 'id'], id], 8, 4.5],
     ]);
+
+    // Fly to the selected trail's extent
+    if (highlightTrailId) {
+      const feature = trailsFc.features.find(
+        (f) => f.properties?.id === highlightTrailId
+      );
+      if (feature?.geometry) {
+        const bounds = geometryBounds(feature.geometry);
+        if (bounds) {
+          map.fitBounds(bounds, { padding: 60, maxZoom: 15.5, duration: 700 });
+        }
+      }
+    }
   }, [highlightTrailId, mapLoaded, trailsFc]);
 
   const addSources = useCallback((map: mapboxgl.Map) => {
