@@ -101,14 +101,18 @@ export default function ImportPage() {
       </div>
 
       {/* iOS Shortcut tip */}
-      <div className="bg-green-50 border border-green-100 rounded-xl p-5">
-        <h2 className="font-semibold text-green-800 mb-2">Automate with iOS Shortcuts</h2>
+      <a
+        href="/setup"
+        className="block bg-green-50 border border-green-100 rounded-xl p-5 hover:bg-green-100 transition-colors"
+      >
+        <h2 className="font-semibold text-green-800 mb-2">
+          Better: sync directly from iPhone →
+        </h2>
         <p className="text-sm text-green-700">
-          You can create an iOS Shortcut that automatically reads new workouts from HealthKit and
-          exports them as a JSON backup. Trigger it after each workout or on a schedule.
-          Import the resulting JSON file here using the <strong>JSON backup</strong> option below.
+          Skip the export.zip entirely. An iOS Shortcut can push new workouts straight
+          from HealthKit to your site in seconds — fully automatic if you want it.
         </p>
-      </div>
+      </a>
 
       {/* Upload section */}
       {step === 'idle' && (

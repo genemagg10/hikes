@@ -7,6 +7,7 @@ const links = [
   { href: '/trails', label: 'Trails' },
   { href: '/map', label: 'Map' },
   { href: '/import', label: 'Import' },
+  { href: '/setup', label: 'Sync' },
 ];
 
 export default function NavBar() {
