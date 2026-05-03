@@ -20,7 +20,7 @@ create table if not exists trails (
   description  text,
   tags         jsonb default '{}',         -- raw OSM tags
   geometry     geometry(MultiLineString, 4326) not null,
-  bbox         box2d generated always as (st_extent(geometry)) stored,
+  bbox         box2d generated always as (box2d(geometry)) stored,
   osm_id       bigint,
   osm_type     text,                       -- way | relation
   created_at   timestamptz default now(),
