@@ -157,9 +157,12 @@ function parseRelation(el: any): OsmTrailFeature | null {
 export async function fetchLamorindaTrails(): Promise<OsmTrailFeature[]> {
   const resp = await fetch(OVERPASS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'HikeTrack/1.0 (+https://github.com/genemagg10/hikes)',
+    },
     body: `data=${encodeURIComponent(OVERPASS_QUERY)}`,
-    // Don't cache — always fetch fresh
     cache: 'no-store',
   });
 
