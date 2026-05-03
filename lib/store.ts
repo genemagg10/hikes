@@ -11,7 +11,7 @@
 import { Workout, Stats, ActivityType } from './types';
 import { matchTrailsToRoute, getTrailById } from './trails';
 
-const LS_KEY = 'hike-tracker-workouts';
+const LS_KEY = 'trail-tracker-workouts';
 
 // ─── localStorage (offline cache) ──────────────────────────────────────────
 

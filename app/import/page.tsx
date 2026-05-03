@@ -56,7 +56,7 @@ export default function ImportPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hiketrack-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `trailtracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -150,7 +150,7 @@ export default function ImportPage() {
             <div className="text-3xl mb-2">📄</div>
             <p className="font-medium text-gray-700">Import JSON backup</p>
             <p className="text-sm text-gray-400 mt-0.5">
-              Previously exported from HikeTrack
+              Previously exported from TrailTracker
             </p>
             <input
               ref={jsonRef}

@@ -1,5 +1,5 @@
 -- ============================================================
--- HikeTrack — Supabase Schema
+-- TrailTracker — Supabase Schema
 -- Run this in the Supabase SQL Editor (Dashboard → SQL Editor)
 -- ============================================================
 
